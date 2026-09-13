@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ScreenRescue
+Comment=Broken Screen Unlocker, Ghost-Touch Blocker & Android Recovery
+Exec=screen-rescue
+Icon=icon
+Categories=Utility;System;
+Terminal=false
+StartupNotify=true
