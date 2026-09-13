@@ -9,6 +9,7 @@ rm -rf build dist AppDir
 pyinstaller --noconfirm --onedir --windowed \
     --name "screen-rescue" \
     --add-data "icon.png:." \
+    --add-data "evgrab:." \
     --icon "icon.png" \
     main.py
 
@@ -49,5 +50,5 @@ echo "=== 5. Copying to ~/Applications/ ==="
 mkdir -p "$HOME/Applications"
 cp ScreenRescue-x86_64.AppImage "$HOME/Applications/"
 
-echo "🎉 ScreenRescue AppImage built successfully!"
+echo "=== ScreenRescue AppImage built successfully ==="
 ls -lh ScreenRescue-x86_64.AppImage

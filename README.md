@@ -30,9 +30,14 @@ The application integrates `scrcpy` and `adb` to provide display mirroring with 
 - **Pattern:** Translates 3x3 pattern sequences into screen-scaled touch drag coordinates.
 - **OTG Keyboard Fallback:** Emulates a USB HID keyboard via `scrcpy --otg --mouse=disabled` for devices where ADB is unauthorized or unavailable.
 
+### Hardware Button Isolation (Water Damage & Physical Short Shield)
+- Deploys an embedded standalone ARM64 daemon (`evgrab`) to exclusively grab the hardware button event node (`/dev/input/event0`) via the Linux kernel `EVIOCGRAB` (`0x40044590`) ioctl.
+- Intercepts and discards continuous volume and power button interrupts caused by water ingress, corrosion, or shorted physical side switches.
+- Provides desktop software controls for Volume Up, Volume Down, Power, and Wakeup, maintaining complete device usability.
+
 ### Power and Timeout Configuration
 - Applies Android configuration overrides (`svc power stayon true`, `stay_on_while_plugged_in = 7`, `power_button_instantly_locks = 0`, `end_button_behavior = 1`) to prevent hardware button shorts from putting the device to sleep.
-- Includes an optional keep-awake monitor thread that checks device power states and sends wakeup events (`KEYCODE_WAKEUP`) if sleep is detected.
+- Includes an optional keep-awake monitor thread that checks device power states and ensures hardware isolation daemons remain active.
 
 ### Credential Removal
 - Provides direct removal of device credentials via `locksettings clear --old <credential>` and `locksettings set-disabled true` to eliminate recurring lockouts during recovery.
@@ -52,6 +57,7 @@ The application integrates `scrcpy` and `adb` to provide display mirroring with 
 | :--- | :--- |
 | **USB Protocol Handling** | Certain chipsets (such as Unisoc/Spreadtrum) encounter kernel pipe errors when initializing USB mouse endpoints. ScreenRescue runs OTG sessions with mouse input disabled to maintain reliable HID keyboard communication. |
 | **Digitizer Isolation** | Turning off the physical display panel disables the capacitive touch controller at the hardware level. Scrcpy continues reading from SurfaceFlinger/GPU compositor buffers without interference from ghost touch events. |
+| **Hardware Button Isolation** | Water ingress bridges physical GPIO contact pads on `/dev/input/event0` (`gpio-keys`), causing continuous volume and power keypress spam. ScreenRescue deploys an embedded static ARM64 daemon calling `ioctl(fd, EVIOCGRAB, 1)` to claim exclusive ownership of the input event node and discard short-circuit events, while allowing software keyevents to function uninterrupted. |
 | **Android 15 Bouncer Input** | Android 15 drops synthetic text input on secure lock surfaces. Numeric PIN submission is handled by dispatching individual hardware keycodes with defined timing intervals. |
 
 ---

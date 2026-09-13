@@ -24,6 +24,21 @@ from PyQt6.QtGui import QIcon, QFont, QColor, QPainter, QPen, QBrush, QLinearGra
 APP_DIR = Path(__file__).resolve().parent
 ICON_PATH = APP_DIR / "icon.png"
 
+# Standalone 326-byte ARM64 ELF binary that exclusively isolates /dev/input/event0
+# via EVIOCGRAB (0x40044590) ioctl to shield against water-damaged shorting buttons.
+EVGRAB_ARM64_BIN = (
+    b'\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00\x01\x00\x00\x00x\x00@\x00\x00\x00\x00\x00'
+    b'@\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00@\x008\x00\x01\x00\x00\x00\x00\x00\x00\x00'
+    b'\x01\x00\x00\x00\x07\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00@\x00\x00\x00\x00\x00\x00\x00@\x00\x00\x00\x00\x00'
+    b'F\x01\x00\x00\x00\x00\x00\x00F\x01\x00\x00\x00\x00\x00\x00\x00\x10\x00\x00\x00\x00\x00\x00\xe0\x03@\xf9\x1f\x04\x00\xf1'
+    b'l\x00\x00TA\x05\x00\x10\x02\x00\x00\x14\xe1\x0b@\xf9`\x0c\x80\x92\x02\x00\x80\xd2\x03\x00\x80\xd2\x08\x07\x80\xd2\x01\x00'
+    b'\x00\xd4\x1f\x00\x00\xf1K\x03\x00T\xf3\x03\x00\xaa\xe0\x03\x13\xaa\x01\xb2\x88\xd2\x81\x00\xa8\xf2"\x00\x80\xd2\xa8\x03'
+    b'\x80\xd2\x01\x00\x00\xd4\x1f\x00\x00\xf1\x8b\x02\x00T \x00\x80\xd2A\x03\x00P\x02\x01\x80\xd2\x08\x08\x80\xd2\x01\x00\x00\xd4'
+    b'\xff\x03\x01\xd1\xe0\x03\x13\xaa\xe1\x03\x00\x91\x02\x08\x80\xd2\xe8\x07\x80\xd2\x01\x00\x00\xd4\x1f\x00\x00\xf1L\xff\xff'
+    b'T\x00\x00\x80\xd2\xa8\x0b\x80\xd2\x01\x00\x00\xd4\xe0\x03\x00\xcb\xa8\x0b\x80\xd2\x01\x00\x00\xd4\xe0\x03\x00\xcb\x00\x90'
+    b'\x01\x91\xa8\x0b\x80\xd2\x01\x00\x00\xd4/dev/input/event0\x00GRABBED\n'
+)
+
 DARK_STYLE = """
 QMainWindow {
     background-color: #0b0f19;
@@ -465,14 +480,44 @@ class ScreenRescueApp(QMainWindow):
 
         layout.addWidget(opt_group)
 
-        watchdog_group = QGroupBox("Power Management and Mistouch Shield")
+        watchdog_group = QGroupBox("Hardware Buttons, Power, and Mistouch Shield")
         watchdog_layout = QVBoxLayout(watchdog_group)
-        self.cb_anti_sleep_watchdog = QCheckBox("Keep-Awake Watchdog (Revives display if power button shorts)")
+
+        self.cb_hardware_button_shield = QCheckBox("Mute Physical Side Buttons (Volume/Power Hardware Short Shield)")
+        self.cb_hardware_button_shield.setChecked(True)
+        self.cb_hardware_button_shield.setStyleSheet("color: #38bdf8; font-weight: bold;")
+        self.cb_hardware_button_shield.toggled.connect(self.on_toggle_button_shield)
+        watchdog_layout.addWidget(self.cb_hardware_button_shield)
+
+        self.cb_anti_sleep_watchdog = QCheckBox("Keep-Awake Watchdog (Revives display if sleep occurs)")
         self.cb_anti_sleep_watchdog.setChecked(True)
         self.cb_anti_sleep_watchdog.setStyleSheet("color: #38bdf8; font-weight: bold;")
         watchdog_layout.addWidget(self.cb_anti_sleep_watchdog)
 
-        self.btn_apply_anti_sleep = QPushButton("Apply Anti-Sleep Settings")
+        ctrl_box = QHBoxLayout()
+        ctrl_box.addWidget(QLabel("Software Controls:"))
+        self.btn_vol_down = QPushButton("Vol -")
+        self.btn_vol_down.setToolTip("Trigger Volume Down keyevent (25)")
+        self.btn_vol_down.clicked.connect(lambda: self.send_software_key(25, "Volume Down"))
+        ctrl_box.addWidget(self.btn_vol_down)
+
+        self.btn_vol_up = QPushButton("Vol +")
+        self.btn_vol_up.setToolTip("Trigger Volume Up keyevent (24)")
+        self.btn_vol_up.clicked.connect(lambda: self.send_software_key(24, "Volume Up"))
+        ctrl_box.addWidget(self.btn_vol_up)
+
+        self.btn_power_key = QPushButton("Power")
+        self.btn_power_key.setToolTip("Trigger Power keyevent (26)")
+        self.btn_power_key.clicked.connect(lambda: self.send_software_key(26, "Power"))
+        ctrl_box.addWidget(self.btn_power_key)
+
+        self.btn_wake_key = QPushButton("Wake")
+        self.btn_wake_key.setToolTip("Trigger Wakeup keyevent (224)")
+        self.btn_wake_key.clicked.connect(lambda: self.send_software_key(224, "Wakeup"))
+        ctrl_box.addWidget(self.btn_wake_key)
+        watchdog_layout.addLayout(ctrl_box)
+
+        self.btn_apply_anti_sleep = QPushButton("Apply Anti-Sleep & Shield Settings")
         self.btn_apply_anti_sleep.clicked.connect(self.apply_anti_sleep_settings)
         watchdog_layout.addWidget(self.btn_apply_anti_sleep)
         layout.addWidget(watchdog_group)
@@ -927,6 +972,62 @@ class ScreenRescueApp(QMainWindow):
             subprocess.run(["adb", "shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), "120"])
             time.sleep(0.05)
 
+    def _deploy_evgrab_daemon(self):
+        serial = self.current_serial
+        s_arg = ["-s", serial] if serial else []
+        try:
+            chk = subprocess.run(["adb"] + s_arg + ["shell", "pidof", "evgrab"],
+                                 capture_output=True, text=True, timeout=2)
+            if chk.stdout.strip():
+                return
+
+            test_f = subprocess.run(["adb"] + s_arg + ["shell", "test -f /data/local/tmp/evgrab && echo ok"],
+                                    capture_output=True, text=True, timeout=2)
+            if "ok" not in test_f.stdout:
+                tmp_bin = "/tmp/evgrab_arm64_embedded"
+                with open(tmp_bin, "wb") as f:
+                    f.write(EVGRAB_ARM64_BIN)
+                subprocess.run(["adb"] + s_arg + ["push", tmp_bin, "/data/local/tmp/evgrab"],
+                               capture_output=True, timeout=3)
+                subprocess.run(["adb"] + s_arg + ["shell", "chmod", "+x", "/data/local/tmp/evgrab"],
+                               capture_output=True, timeout=2)
+
+            subprocess.run(
+                ["adb"] + s_arg + ["shell", "nohup /data/local/tmp/evgrab /dev/input/event0 >/data/local/tmp/evgrab.log 2>&1 &"],
+                capture_output=True, timeout=2
+            )
+            self.log("[SUCCESS] Hardware button shield active. Physical side buttons (/dev/input/event0) are muted.")
+        except Exception as e:
+            self.log(f"[WARN] Failed to deploy hardware button shield: {e}")
+
+    def _stop_evgrab_daemon(self):
+        serial = self.current_serial
+        s_arg = ["-s", serial] if serial else []
+        try:
+            subprocess.run(["adb"] + s_arg + ["shell", "pkill", "-f", "evgrab"],
+                           capture_output=True, timeout=2)
+            self.log("[INFO] Hardware button shield disabled. Physical side buttons restored.")
+        except Exception as e:
+            self.log(f"[WARN] Failed to stop hardware button shield: {e}")
+
+    def on_toggle_button_shield(self, checked: bool):
+        if checked:
+            threading.Thread(target=self._deploy_evgrab_daemon, daemon=True).start()
+        else:
+            threading.Thread(target=self._stop_evgrab_daemon, daemon=True).start()
+
+    def send_software_key(self, keycode: int, name: str):
+        serial = self.current_serial
+        s_arg = ["-s", serial] if serial else []
+        def worker():
+            try:
+                subprocess.run(["adb"] + s_arg + ["shell", "input", "keyevent", str(keycode)],
+                               capture_output=True, timeout=2)
+                self.log(f"[INFO] Dispatched software keyevent: {name} ({keycode}).")
+            except Exception as e:
+                self.log(f"[ERROR] Failed to send {name} keyevent: {e}")
+        threading.Thread(target=worker, daemon=True).start()
+
     def apply_anti_sleep_settings(self):
         """Hardens the device against sleeping, screen timeouts, and power button shorts."""
         serial = self.current_serial
@@ -947,6 +1048,10 @@ class ScreenRescueApp(QMainWindow):
                 subprocess.run(c, capture_output=True, timeout=2)
             except Exception:
                 pass
+
+        if hasattr(self, 'cb_hardware_button_shield') and self.cb_hardware_button_shield.isChecked():
+            self._deploy_evgrab_daemon()
+
         self.log("[SUCCESS] Anti-sleep configuration applied.")
 
     def run_clear_lockscreen(self):
@@ -992,13 +1097,13 @@ class ScreenRescueApp(QMainWindow):
         threading.Thread(target=worker, daemon=True).start()
 
     def start_watchdog_thread(self):
-        """Background daemon that detects if sleep occurred and immediately sends wakeup event."""
+        """Background daemon that monitors device sleep state and ensures hardware shields stay active."""
         def watchdog_loop():
             while True:
                 time.sleep(2)
                 try:
-                    if hasattr(self, 'cb_anti_sleep_watchdog') and self.cb_anti_sleep_watchdog.isChecked():
-                        if self.device_state == "device":
+                    if self.device_state == "device":
+                        if hasattr(self, 'cb_anti_sleep_watchdog') and self.cb_anti_sleep_watchdog.isChecked():
                             res = subprocess.run(
                                 ["adb", "shell", "dumpsys", "power"],
                                 capture_output=True, text=True, timeout=2
@@ -1006,6 +1111,14 @@ class ScreenRescueApp(QMainWindow):
                             if "mWakefulness=Asleep" in res.stdout:
                                 subprocess.run(["adb", "shell", "input", "keyevent", "224"], capture_output=True, timeout=1)
                                 self.log("[INFO] Watchdog: device sleep detected. Sent WAKEUP event.")
+
+                        if hasattr(self, 'cb_hardware_button_shield') and self.cb_hardware_button_shield.isChecked():
+                            res = subprocess.run(
+                                ["adb", "shell", "pidof", "evgrab"],
+                                capture_output=True, text=True, timeout=2
+                            )
+                            if not res.stdout.strip():
+                                self._deploy_evgrab_daemon()
                 except Exception:
                     pass
 
